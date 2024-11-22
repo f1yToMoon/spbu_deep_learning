@@ -1,0 +1,196 @@
+import os
+import json
+import pandas as pd
+import matplotlib.pyplot as plt
+import torch.optim as optim
+from PIL import Image
+from torch.utils.data import Dataset
+import torchvision.transforms as transforms
+import torchvision.transforms.functional as F
+import torch
+import torch.nn as nn
+import torchvision.models as models
+from sklearn.metrics import f1_score
+from dvclive import Live
+from sklearn.model_selection import KFold
+from sklearn.model_selection import StratifiedKFold
+from torch.utils.data import DataLoader, Subset
+
+k_folds = 5
+kfold = KFold(n_splits=k_folds, shuffle=True, random_state=42)
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+epochs = 3
+batch_size = 16
+learning_rate = 0.001
+optimizer_weight = 1e-5  
+
+TRAIN_DATA_PATH = "/home/an/spbu_deep_learning/classification/splitted"
+CSV_PATH = "/home/an/spbu_deep_learning/classification/train_annotations.csv"
+LABELS_MAPPING = {
+    "0": "Ace", "1": "Akainu", "2": "Brook", "3": "Chopper", "4": "Crocodile",
+    "5": "Franky", "6": "Jinbei", "7": "Kurohige", "8": "Law", "9": "Luffy",
+    "10": "Mihawk", "11": "Nami", "12": "Rayleigh", "13": "Robin", "14": "Sanji",
+    "15": "Shanks", "16": "Usopp", "17": "Zoro"
+}
+
+class OnePieceDataset(Dataset):
+    def __init__(self, images_dir, csv_path=None, labels_json=None, transform=None):
+        self.images_dir = images_dir
+        self.transform = transform
+        self.image_paths = []
+        self.labels = []
+        self.is_train = csv_path is not None 
+
+        if self.is_train:
+            self.data = pd.read_csv(csv_path)
+            self.label_map = labels_json if isinstance(labels_json, dict) else None
+
+
+            for _, row in self.data.iterrows():
+                relative_path = row['image_path'].replace("\\", "/")  
+                image_path = os.path.join(images_dir, relative_path)
+                image_path = os.path.normpath(image_path) 
+                self.image_paths.append(image_path)
+                self.labels.append(row['label'])
+
+        else:
+            self.image_paths = [
+                os.path.join(images_dir, fname)
+                for fname in os.listdir(images_dir)
+                if os.path.isfile(os.path.join(images_dir, fname))
+            ]
+
+    def __len__(self):
+        return len(self.image_paths)
+
+    def __getitem__(self, idx):
+        image_path = self.image_paths[idx]
+        image = Image.open(image_path).convert("RGB")
+
+        if self.transform:
+            image = self.transform(image)
+
+        if self.is_train:
+            label = self.labels[idx]
+            return image, label
+        else:
+            image_name = os.path.splitext(os.path.basename(image_path))[0]  
+            return image, image_name
+
+transform = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.RandomHorizontalFlip(),
+    transforms.RandomRotation(15),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+])
+
+dataset = OnePieceDataset(images_dir=TRAIN_DATA_PATH, csv_path=CSV_PATH, labels_json=LABELS_MAPPING, transform=transform)
+
+model = models.resnet18(pretrained=True)
+
+loss_fn = nn.CrossEntropyLoss()
+optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=optimizer_weight)
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
+
+def train_one_epoch(model, dataloader, loss_fn, optimizer, device):
+    model.train()
+    running_loss = 0.0
+    correct = 0
+    total = 0
+
+    for images, labels in dataloader:
+        images, labels = images.to(device), labels.to(device)
+
+        optimizer.zero_grad()
+        outputs = model(images)
+        loss = loss_fn(outputs, labels)
+        loss.backward()
+        optimizer.step()
+
+        running_loss += loss.item()
+        _, preds = outputs.max(1)
+        correct += preds.eq(labels).sum().item()
+        total += labels.size(0)
+
+    train_loss = running_loss / len(dataloader)
+    train_acc = 100 * correct / total
+    return train_loss, train_acc
+
+def evaluate(model, dataloader, loss_fn, device):
+    model.eval()
+    running_loss = 0.0
+    correct = 0
+    total = 0
+    with torch.no_grad():
+        for images, labels in dataloader:
+            images, labels = images.to(device), labels.to(device)
+
+            outputs = model(images)
+            loss = loss_fn(outputs, labels)
+
+            running_loss += loss.item()
+            _, preds = outputs.max(1)
+            correct += preds.eq(labels).sum().item()
+            total += labels.size(0)
+
+    val_loss = running_loss / len(dataloader)
+    val_acc = 100 * correct / total
+    return val_loss, val_acc
+
+sum_val_accuracy = 0
+sum_train_accuracy = 0
+sum_val_loss = 0
+sum_train_loss = 0
+
+for fold, (train_idx, val_idx) in enumerate(kfold.split(dataset)):
+    print(f'-------------{fold + 1} fold-------------')
+    train_dataset = Subset(dataset, train_idx)
+    val_dataset = Subset(dataset, val_idx)
+
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+
+    model = models.resnet18(pretrained=True)
+    model.fc = nn.Linear(model.fc.in_features, len(LABELS_MAPPING))
+    model = model.to(device)
+    with Live() as live:  
+        live.log_param("epochs", epochs)
+        live.log_param("batch_size", batch_size)
+        live.log_param("learning_rate", learning_rate)
+        live.log_param("weight_decay", optimizer_weight) 
+
+        for epoch in range(epochs):
+            train_loss, train_acc = train_one_epoch(model, train_loader, loss_fn, optimizer, device)
+
+            val_loss, val_acc = evaluate(model, val_loader, loss_fn, device)
+
+            live.next_step()  
+        
+            scheduler.step()
+
+            print(f"Epoch {epoch+1}/{epochs}")
+            print(f"train loss: {train_loss:.4f}, train accuracy: {train_acc:.2f}%")
+            print(f"val loss: {val_loss:.4f}, val accuracy: {val_acc:.2f}%")
+
+    sum_val_accuracy += val_acc
+    sum_train_accuracy += train_acc
+    sum_val_loss += val_loss
+    sum_train_loss += train_loss
+            
+avg_val_accuracy = sum_val_accuracy / k_folds
+avg_train_accuracy = sum_train_accuracy / k_folds
+avg_val_loss = sum_val_loss / k_folds
+avg_train_loss = sum_train_loss / k_folds
+
+live.log_metric("avg_train_loss", train_loss)
+live.log_metric("avg_train_acc", train_acc)
+live.log_metric("avg_val_loss", val_loss)
+live.log_metric("avg_val_acc", val_acc)
+
+print(f"train avg loss: {avg_train_loss:.4f}, train avg accuracy: {avg_train_accuracy:.2f}%")
+print(f"val avg loss: {avg_val_loss:.4f}, val avg accuracy: {avg_val_accuracy:.2f}%")
+
+torch.save(model.state_dict(), "one_piece_model.pth")

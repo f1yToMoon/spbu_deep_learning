@@ -1,0 +1,17 @@
+stages:
+  train:
+    cmd: python main2.py
+    deps:
+    - main2.py
+    - /home/an/spbu_deep_learning/classification/splitted
+    outs:
+    - one_piece_model.pth
+    metrics:
+    - dvclive/metrics.json
+params:
+- dvclive/params.yaml
+metrics:
+- dvclive/metrics.json
+plots:
+- dvclive/plots/metrics:
+    x: step
