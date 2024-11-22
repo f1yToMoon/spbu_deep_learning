@@ -1,0 +1,23 @@
+schema: '2.0'
+stages:
+  train:
+    cmd: python main2.py
+    deps:
+    - path: main2.py
+      hash: md5
+      md5: b20b74a14e1a6f48b36c3b410a9193ab
+      size: 6026
+    - path: splitted
+      hash: md5
+      md5: ccdff9a771c2c51ef90c819489ab65eb.dir
+      size: 773560172
+      nfiles: 3764
+    outs:
+    - path: dvclive/metrics.json
+      hash: md5
+      md5: ee1f43bc90390293774c1c66d91628c1
+      size: 164
+    - path: one_piece_model.pth
+      hash: md5
+      md5: 5a50c9a85a5e3e8bc79ed6f7dbe54381
+      size: 44822830
