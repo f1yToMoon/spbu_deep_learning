@@ -4,7 +4,8 @@
 
 ## Результаты 
 Промежуточные!
-![image](https://github.com/user-attachments/assets/f99b0d53-270e-4ad4-b589-20d95f98c10c)
+![image](https://github.com/user-attachments/assets/65154805-ecf5-4a51-894e-ec603f0375ff)
+
 
 
 # Практики
