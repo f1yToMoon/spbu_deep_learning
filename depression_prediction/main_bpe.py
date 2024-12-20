@@ -33,15 +33,13 @@ class LSTM(nn.Module):
         self.embedding = nn.Embedding(vocab_size, embedding_dim)
         self.lstm = nn.LSTM(embedding_dim, hidden_dim, batch_first=True, 
                            num_layers=num_layers, dropout=dropout_rate, bidirectional=True)
-        self.dropout = nn.Dropout(dropout_rate)
         self.fc = nn.Linear(hidden_dim * 2, 1)
         self.sigmoid = nn.Sigmoid()
         
     def forward(self, x):
-        embedded = self.dropout(self.embedding(x))
-        lstm_out, _ = self.lstm(embedded)
-        lstm_out = self.dropout(lstm_out)
-        out = self.fc(lstm_out[:, -1, :])
+        embedded = self.embedding(x)
+        out, _ = self.lstm(embedded)
+        out = self.fc(out[:, -1, :])
         return self.sigmoid(out)
 
 train_df = pd.read_csv('./train.csv')
