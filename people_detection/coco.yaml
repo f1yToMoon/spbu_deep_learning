@@ -1,0 +1,6 @@
+path: /home/an/spbu_deep_learning/people_detection 
+train: train/images 
+val: test 
+
+names:
+  0: person
