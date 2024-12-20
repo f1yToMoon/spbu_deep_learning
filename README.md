@@ -4,9 +4,7 @@
 
 ## Результаты 
 Промежуточные!
-![image](https://github.com/user-attachments/assets/65154805-ecf5-4a51-894e-ec603f0375ff)
-
-
+![image](https://github.com/user-attachments/assets/55682f88-45d0-4394-b4d1-4248f12b5b9b)
 
 # Практики
 **План является предварительным и будет меняться**
